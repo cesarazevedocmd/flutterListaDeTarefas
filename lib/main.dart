@@ -17,6 +17,8 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   List _toDoList = [];
+  Map<String, dynamic> _lastRemoved;
+  int _lastRemovedPosition;
 
   final _textController = TextEditingController();
 
@@ -113,10 +115,13 @@ class _HomeState extends State<Home> {
 
   Widget _getListView() {
     return Expanded(
-      child: ListView.builder(
-        padding: EdgeInsets.only(top: 10.0),
-        itemCount: _toDoList.length,
-        itemBuilder: _getListViewItemBuilder,
+      child: RefreshIndicator(
+        child: ListView.builder(
+          padding: EdgeInsets.only(top: 10.0),
+          itemCount: _toDoList.length,
+          itemBuilder: _getListViewItemBuilder,
+        ),
+        onRefresh: _initRefresh,
       ),
     );
   }
@@ -126,32 +131,71 @@ class _HomeState extends State<Home> {
 
     return Dismissible(
       key: Key(DateTime.now().millisecond.toString()),
-      background: Container(
-        color: Colors.red,
-        child: Align(
-          alignment: Alignment(-0.9, 0.0),
-          child: Icon(
-            Icons.delete,
-            color: Colors.white,
-          ),
+      background: getBackgroundDismiss(),
+      direction: DismissDirection.startToEnd,
+      child: getCheckboxList(item),
+      onDismissed: (dismissDirection) {
+        executeDelete(item, index);
+        createSnackBar(context);
+      },
+    );
+  }
+
+  void createSnackBar(context) {
+    final snackBar = SnackBar(
+      content: Text("Removido item: ${_lastRemoved["title"]}"),
+      action: SnackBarAction(
+        label: "Rollback",
+        onPressed: () {
+          setState(() {
+            _toDoList.insert(_lastRemovedPosition, _lastRemoved);
+            _saveData();
+          });
+        },
+      ),
+      duration: Duration(seconds: 3),
+    );
+
+    Scaffold.of(context).showSnackBar(snackBar);
+  }
+
+  void executeDelete(item, index) {
+    setState(() {
+      _lastRemoved = item;
+      _lastRemovedPosition = index;
+      _toDoList.removeAt(index);
+      _saveData();
+    });
+  }
+
+  CheckboxListTile getCheckboxList(item) {
+    return CheckboxListTile(
+      title: Text(item["title"]),
+      value: item["ok"],
+      secondary: CircleAvatar(
+        foregroundColor: Colors.white,
+        child: Icon(
+          item["ok"] ? Icons.check : Icons.info,
         ),
       ),
-      direction: DismissDirection.startToEnd,
-      child: CheckboxListTile(
-        title: Text(item["title"]),
-        value: item["ok"],
-        secondary: CircleAvatar(
-          foregroundColor: Colors.white,
-          child: Icon(
-            item["ok"] ? Icons.check : Icons.info,
-          ),
+      onChanged: (check) {
+        setState(() {
+          item["ok"] = check;
+        });
+        _saveData();
+      },
+    );
+  }
+
+  Container getBackgroundDismiss() {
+    return Container(
+      color: Colors.red,
+      child: Align(
+        alignment: Alignment(-0.9, 0.0),
+        child: Icon(
+          Icons.delete,
+          color: Colors.white,
         ),
-        onChanged: (check) {
-          setState(() {
-            item["ok"] = check;
-          });
-          _saveData();
-        },
       ),
     );
   }
@@ -169,5 +213,32 @@ class _HomeState extends State<Home> {
 
   dynamic _getNewTask(String task) {
     return {"title": "$task", "ok": false};
+  }
+
+  Future<Null> _initRefresh() async{
+    await Future.delayed(Duration(seconds: 1));
+    setState(() {
+      _toDoList = _sortList(_toDoList);
+      _saveData();
+    });
+  }
+
+  List _sortList(List itens){
+
+    List listNoFinished = [];
+    List listFinished = [];
+    List finalList = [];
+
+    itens.forEach((item){
+      if(item["ok"])
+        listFinished.add(item);
+      else
+        listNoFinished.add(item);
+    });
+
+    finalList.addAll(listNoFinished);
+    finalList.addAll(listFinished);
+
+    return finalList;
   }
 }
